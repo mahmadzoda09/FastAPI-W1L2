@@ -1,5 +1,4 @@
 from fastapi import FastAPI
-from pydantic import BaseModel, Field
 
 app = FastAPI(title='CRUD')
 
@@ -85,28 +84,6 @@ order_items_list = []
 order_item_id_next = 0
 
 
-class UserUpdate(BaseModel):
-    username: str | None = Field(default=None, min_length=1)
-    password: str | None = Field(default=None, min_length=1)
-
-class CategoryUpdate(BaseModel):
-    name: str = Field(min_length=1)
-
-class ProductCreate(BaseModel):
-    title: str = Field(min_length=1)
-    price: float = Field(gt=0)
-    category_id: int
-
-class ProductUpdate(BaseModel):
-    title: str | None = Field(default=None, min_length=1)
-    price: float | None = Field(default=None, gt=0)
-    category_id: int | None = None
-
-class OrderItemCreate(BaseModel):
-    product_id: int
-    quantity: int = Field(gt=0)
-
-
 @app.get('/users/{user_id}')
 async def get_user(user_id:int):
     for user in user_list:
@@ -115,17 +92,21 @@ async def get_user(user_id:int):
     return {'User not found'}
 
 @app.patch('/users/{user_id}')
-async def update_user(user_id:int, data:UserUpdate):
+async def update_user(user_id:int, username:str = None, password:str = None):
+    if username is not None and not username.strip():
+        return {'Username can not be empty'}
+    if password is not None and not password.strip():
+        return {'Password can not be empty'}
     for user in user_list:
         if user['id'] == user_id:
-            if data.username is not None and data.username != user['username']:
-                if data.username in users_unique:
+            if username is not None and username != user['username']:
+                if username in users_unique:
                     return {'Username already exists'}
                 users_unique.remove(user['username'])
-                users_unique.append(data.username)
-                user['username'] = data.username
-            if data.password is not None:
-                user['password'] = data.password
+                users_unique.append(username)
+                user['username'] = username
+            if password is not None:
+                user['password'] = password
             return {'id' : user['id'], 'username' : user['username']}
     return {'User not found'}
 
@@ -151,12 +132,12 @@ async def get_category(category_id:int):
     return {'Category not found'}
 
 @app.put('/categories/{category_id}')
-async def update_category(category_id:int, data:CategoryUpdate):
-    if not data.name.strip():
+async def update_category(category_id:int, name:str):
+    if not name.strip():
         return {'Name can not be empty'}
     for cat in category_list:
         if cat['id'] == category_id:
-            cat['name'] = data.name.strip()
+            cat['name'] = name.strip()
             return cat
     return {'Category not found'}
 
@@ -188,16 +169,20 @@ async def get_products():
     return product_list
 
 @app.post('/products')
-async def add_product(data:ProductCreate):
+async def add_product(title:str, price:float, category_id:int):
     global product_id_next
-    if data.category_id not in category_id_list:
+    if not title.strip():
+        return {'Title can not be empty'}
+    if price <= 0:
+        return {'Price must be greater than 0'}
+    if category_id not in category_id_list:
         return {'Category not found'}
     product_id_next += 1
     product = {
         'id' : product_id_next,
-        'title' : data.title,
-        'price' : data.price,
-        'category_id' : data.category_id
+        'title' : title,
+        'price' : price,
+        'category_id' : category_id
     }
     product_list.append(product)
     return product
@@ -235,17 +220,21 @@ async def get_product(product_id:int):
     return {'Product not found'}
 
 @app.patch('/products/{product_id}')
-async def update_product(product_id:int, data:ProductUpdate):
+async def update_product(product_id:int, title:str = None, price:float = None, category_id:int = None):
+    if title is not None and not title.strip():
+        return {'Title can not be empty'}
+    if price is not None and price <= 0:
+        return {'Price must be greater than 0'}
     for product in product_list:
         if product['id'] == product_id:
-            if data.category_id is not None and data.category_id not in category_id_list:
+            if category_id is not None and category_id not in category_id_list:
                 return {'Category not found'}
-            if data.title is not None:
-                product['title'] = data.title
-            if data.price is not None:
-                product['price'] = data.price
-            if data.category_id is not None:
-                product['category_id'] = data.category_id
+            if title is not None:
+                product['title'] = title
+            if price is not None:
+                product['price'] = price
+            if category_id is not None:
+                product['category_id'] = category_id
             return product
     return {'Product not found'}
 
@@ -290,8 +279,10 @@ async def get_order(order_id:int):
     return {'Order not found'}
 
 @app.post('/orders/{order_id}/items')
-async def add_order_item(order_id:int, data:OrderItemCreate):
+async def add_order_item(order_id:int, product_id:int, quantity:int):
     global order_item_id_next
+    if quantity <= 0:
+        return {'Quantity must be greater than 0'}
     order_found = False
     for order in order_list:
         if order['id'] == order_id:
@@ -301,22 +292,22 @@ async def add_order_item(order_id:int, data:OrderItemCreate):
 
     price = None
     for product in product_list:
-        if product['id'] == data.product_id:
+        if product['id'] == product_id:
             price = product['price']
     if price is None:
         return {'Product not found'}
 
     for item in order_items_list:
-        if item['order_id'] == order_id and item['product_id'] == data.product_id:
-            item['quantity'] += data.quantity
+        if item['order_id'] == order_id and item['product_id'] == product_id:
+            item['quantity'] += quantity
             return item
 
     order_item_id_next += 1
     item = {
         'id' : order_item_id_next,
         'order_id' : order_id,
-        'product_id' : data.product_id,
-        'quantity' : data.quantity,
+        'product_id' : product_id,
+        'quantity' : quantity,
         'price' : price
     }
     order_items_list.append(item)
